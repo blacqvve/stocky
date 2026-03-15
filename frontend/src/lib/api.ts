@@ -1,16 +1,26 @@
+import { getAuthHeader, clearCredentials } from './auth';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
+  const authHeader = getAuthHeader();
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(authHeader ? { Authorization: authHeader } : {}),
       ...options?.headers,
     },
   });
+
+  if (res.status === 401) {
+    clearCredentials();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
 
   if (!res.ok) {
     const error = await res.text();
