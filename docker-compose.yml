@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stocky}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stocky}
+      POSTGRES_DB: ${POSTGRES_DB:-stocky}
+    volumes:
+      - ${POSTGRES_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stocky} -d ${POSTGRES_DB:-stocky}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command: ["-path=/migrations", "-database", "${DB_URL:-postgres://stocky:stocky@db:5432/stocky?sslmode=disable}", "up"]
+    restart: on-failure
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: ${DB_URL:-postgres://stocky:stocky@db:5432/stocky?sslmode=disable}
+      STOCKY_USER: ${STOCKY_USER:-admin}
+      STOCKY_PASS: ${STOCKY_PASS:-changeme}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+
+volumes:
+  postgres_data:

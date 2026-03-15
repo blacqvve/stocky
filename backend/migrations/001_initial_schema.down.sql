@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS project_boms;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS inventory;
+DROP TABLE IF EXISTS components;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS locations;
