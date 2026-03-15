@@ -36,7 +36,7 @@ export interface Location {
   id: string;
   parent_id: string | null;
   name: string;
-  type: 'room' | 'rack' | 'shelf' | 'drawer' | 'grid_bin';
+  type: 'room' | 'rack' | 'shelf' | 'cabinet' | 'drawer' | 'grid_bin';
   created_at: string;
   updated_at: string;
   children?: LocationNode[];

@@ -2,10 +2,23 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api, LocationNode, InventoryItem } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   ChevronRight,
@@ -13,61 +26,265 @@ import {
   FolderOpen,
   Folder,
   Box,
+  Archive,
   PackageSearch,
   Plus,
   Minus,
+  Pencil,
+  Trash2,
+  FolderPlus,
 } from "lucide-react";
 
-// ─── Location Tree ────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type LocationType = "room" | "rack" | "shelf" | "cabinet" | "drawer" | "grid_bin";
+
+const LOCATION_TYPES: LocationType[] = ["room", "rack", "shelf", "cabinet", "drawer", "grid_bin"];
+
+interface LocationDialogState {
+  open: boolean;
+  mode: "create" | "edit";
+  parentId?: string;
+  parentName?: string;
+  locationId?: string;
+  initialName?: string;
+  initialType?: LocationType;
+}
+
+// ─── Location Dialog ──────────────────────────────────────────────────────────
+
+interface LocationDialogProps {
+  state: LocationDialogState;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+function LocationDialog({ state, onClose, onSave }: LocationDialogProps) {
+  const [name, setName] = useState(state.initialName ?? "");
+  const [type, setType] = useState<LocationType>(state.initialType ?? "shelf");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset when dialog opens
+  useEffect(() => {
+    if (state.open) {
+      setName(state.initialName ?? "");
+      setType(state.initialType ?? "shelf");
+      setError(null);
+    }
+  }, [state.open, state.initialName, state.initialType]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) { setError("Name is required"); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      if (state.mode === "create") {
+        await api.createLocation({ name: trimmed, type, ...(state.parentId ? { parent_id: state.parentId } : {}) });
+      } else {
+        await api.updateLocation(state.locationId!, { name: trimmed, type });
+      }
+      onSave();
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const title = state.mode === "create"
+    ? state.parentId ? `Add location inside "${state.parentName}"` : "Add root location"
+    : "Edit location";
+
+  return (
+    <Dialog open={state.open} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="loc-name">Name</Label>
+            <Input
+              id="loc-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Drawer A1"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="loc-type">Type</Label>
+            <Select value={type} onValueChange={(v) => setType(v as LocationType)}>
+              <SelectTrigger id="loc-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LOCATION_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : state.mode === "create" ? "Create" : "Save"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Delete Confirm Dialog ────────────────────────────────────────────────────
+
+interface DeleteDialogProps {
+  open: boolean;
+  locationName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteDialog({ open, locationName, onClose, onConfirm }: DeleteDialogProps) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    await onConfirm();
+    setDeleting(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete location?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground mt-1">
+          This will permanently delete <span className="font-medium text-foreground">"{locationName}"</span> and all of its children. Inventory in those locations will also be removed.
+        </p>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" onClick={handleConfirm} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Location Tree Node ───────────────────────────────────────────────────────
 
 interface TreeNodeProps {
   node: LocationNode;
   selectedId: string | null;
   onSelect: (id: string, name: string) => void;
+  onAddChild: (parentId: string, parentName: string) => void;
+  onEdit: (node: LocationNode) => void;
+  onDelete: (node: LocationNode) => void;
   depth?: number;
 }
 
-function TreeNode({ node, selectedId, onSelect, depth = 0 }: TreeNodeProps) {
+function TreeNode({ node, selectedId, onSelect, onAddChild, onEdit, onDelete, depth = 0 }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(depth < 2);
+  const [menuOpen, setMenuOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const isSelected = selectedId === node.id;
   const isBin = node.type === "grid_bin" || node.type === "drawer";
+  const isCabinet = node.type === "cabinet";
 
-  const Icon = isBin ? Box : expanded ? FolderOpen : Folder;
+  const Icon = isBin ? Box : isCabinet ? Archive : expanded ? FolderOpen : Folder;
 
   return (
     <div>
-      <button
+      <div
         className={cn(
-          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm text-left transition-colors",
+          "group w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm transition-colors",
           isSelected
             ? "bg-blue-600 text-white"
             : "hover:bg-muted text-foreground"
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={() => {
-          if (hasChildren) setExpanded((e) => !e);
-          onSelect(node.id, node.name);
-        }}
       >
-        {hasChildren ? (
-          expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
-          )
-        ) : (
-          <span className="w-3.5" />
-        )}
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className="truncate">{node.name}</span>
-        <Badge
-          variant="secondary"
-          className={cn("ml-auto text-xs shrink-0", isSelected && "bg-blue-500 text-white border-blue-500")}
+        {/* Expand toggle */}
+        <button
+          className="shrink-0"
+          onClick={() => {
+            if (hasChildren) setExpanded((e) => !e);
+            onSelect(node.id, node.name);
+          }}
         >
-          {node.type}
-        </Badge>
-      </button>
+          {hasChildren ? (
+            expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 opacity-60" />
+            )
+          ) : (
+            <span className="w-3.5 inline-block" />
+          )}
+        </button>
+
+        {/* Icon + label */}
+        <button
+          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+          onClick={() => {
+            if (hasChildren) setExpanded((e) => !e);
+            onSelect(node.id, node.name);
+          }}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="truncate">{node.name}</span>
+          <Badge
+            variant="secondary"
+            className={cn("ml-auto text-xs shrink-0", isSelected && "bg-blue-500 text-white border-blue-500")}
+          >
+            {node.type}
+          </Badge>
+        </button>
+
+        {/* Actions (visible on hover) */}
+        <div className={cn("flex items-center gap-0.5 shrink-0", menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+          <button
+            title="Add child location"
+            className={cn(
+              "p-0.5 rounded hover:bg-black/10 transition-colors",
+              isSelected && "hover:bg-white/20"
+            )}
+            onClick={(e) => { e.stopPropagation(); onAddChild(node.id, node.name); }}
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            title="Edit"
+            className={cn(
+              "p-0.5 rounded hover:bg-black/10 transition-colors",
+              isSelected && "hover:bg-white/20"
+            )}
+            onClick={(e) => { e.stopPropagation(); onEdit(node); }}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            title="Delete"
+            className={cn(
+              "p-0.5 rounded hover:bg-black/10 transition-colors",
+              isSelected ? "hover:bg-white/20" : "hover:text-destructive"
+            )}
+            onClick={(e) => { e.stopPropagation(); onDelete(node); }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
       {expanded && hasChildren && (
         <div>
           {node.children!.map((child) => (
@@ -76,6 +293,9 @@ function TreeNode({ node, selectedId, onSelect, depth = 0 }: TreeNodeProps) {
               node={child}
               selectedId={selectedId}
               onSelect={onSelect}
+              onAddChild={onAddChild}
+              onEdit={onEdit}
+              onDelete={onDelete}
               depth={depth + 1}
             />
           ))}
@@ -200,16 +420,29 @@ export default function InventoryPage() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load location tree
-  useEffect(() => {
-    api
-      .getLocationTree()
-      .then(setTree)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoadingTree(false));
+  const [locationDialog, setLocationDialog] = useState<LocationDialogState>({
+    open: false,
+    mode: "create",
+  });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    locationId: string;
+    locationName: string;
+  }>({ open: false, locationId: "", locationName: "" });
+
+  const loadTree = useCallback(async () => {
+    try {
+      const t = await api.getLocationTree();
+      setTree(t);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load locations");
+    }
   }, []);
 
-  // Load inventory when location selected
+  useEffect(() => {
+    loadTree().finally(() => setLoadingTree(false));
+  }, [loadTree]);
+
   const handleSelect = useCallback(async (id: string, name: string) => {
     setSelectedId(id);
     setSelectedName(name);
@@ -229,21 +462,59 @@ export default function InventoryPage() {
       try {
         await api.adjustInventory({ location_id: locationId, component_id: componentId, delta });
       } catch {
-        // Optimistic update already applied in ItemRow; silently ignore
+        // Optimistic update already applied in ItemRow
       }
     },
     []
   );
 
+  const openAddRoot = () =>
+    setLocationDialog({ open: true, mode: "create" });
+
+  const openAddChild = (parentId: string, parentName: string) =>
+    setLocationDialog({ open: true, mode: "create", parentId, parentName });
+
+  const openEdit = (node: LocationNode) =>
+    setLocationDialog({
+      open: true,
+      mode: "edit",
+      locationId: node.id,
+      initialName: node.name,
+      initialType: node.type as LocationType,
+    });
+
+  const openDelete = (node: LocationNode) =>
+    setDeleteDialog({ open: true, locationId: node.id, locationName: node.name });
+
+  const handleDeleteConfirm = async () => {
+    await api.deleteLocation(deleteDialog.locationId);
+    setDeleteDialog({ open: false, locationId: "", locationName: "" });
+    if (selectedId === deleteDialog.locationId) {
+      setSelectedId(null);
+      setSelectedName("");
+      setItems([]);
+    }
+    await loadTree();
+  };
+
   return (
     <div className="flex h-[calc(100vh-0px)] overflow-hidden">
       {/* Left: Location Tree */}
       <div className="w-72 border-r bg-background flex flex-col">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between">
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <FolderOpen className="h-4 w-4 text-muted-foreground" />
             Storage Locations
           </h2>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            title="Add root location"
+            onClick={openAddRoot}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {loadingTree ? (
@@ -255,8 +526,12 @@ export default function InventoryPage() {
           ) : error ? (
             <div className="p-3 text-sm text-destructive">{error}</div>
           ) : tree.length === 0 ? (
-            <div className="p-3 text-sm text-muted-foreground">
-              No locations yet. Add locations via the API or CLI.
+            <div className="p-4 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">No locations yet.</p>
+              <Button size="sm" variant="outline" onClick={openAddRoot} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Add first location
+              </Button>
             </div>
           ) : (
             tree.map((node) => (
@@ -265,6 +540,9 @@ export default function InventoryPage() {
                 node={node}
                 selectedId={selectedId}
                 onSelect={handleSelect}
+                onAddChild={openAddChild}
+                onEdit={openEdit}
+                onDelete={openDelete}
               />
             ))
           )}
@@ -284,7 +562,6 @@ export default function InventoryPage() {
           </div>
         ) : (
           <>
-            {/* Header */}
             <div className="p-4 border-b flex items-center gap-3">
               <Box className="h-5 w-5 text-blue-500" />
               <div>
@@ -295,7 +572,6 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            {/* Contents table */}
             <div className="flex-1 overflow-y-auto">
               {loadingItems ? (
                 <div className="p-6 space-y-3">
@@ -338,6 +614,19 @@ export default function InventoryPage() {
           </>
         )}
       </div>
+
+      {/* Dialogs */}
+      <LocationDialog
+        state={locationDialog}
+        onClose={() => setLocationDialog((s) => ({ ...s, open: false }))}
+        onSave={loadTree}
+      />
+      <DeleteDialog
+        open={deleteDialog.open}
+        locationName={deleteDialog.locationName}
+        onClose={() => setDeleteDialog((s) => ({ ...s, open: false }))}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }

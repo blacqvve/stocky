@@ -4,7 +4,7 @@ CREATE TABLE locations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     parent_id UUID REFERENCES locations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL CHECK (type IN ('room', 'rack', 'shelf', 'drawer', 'grid_bin')),
+    type VARCHAR(50) NOT NULL CHECK (type IN ('room', 'rack', 'shelf', 'cabinet', 'drawer', 'grid_bin')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
