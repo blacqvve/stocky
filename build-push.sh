@@ -64,7 +64,7 @@ if [[ "${BUILD}" == true && "${API_ONLY}" != true ]]; then
   echo "→ Building frontend image"
   docker build \
     --platform linux/amd64 \
-    --build-arg NEXT_PUBLIC_API_URL="https://stocky.faest.xyz" \
+    --no-cache \
     -t "${FRONTEND_IMAGE}:${GIT_SHA}" \
     -t "${FRONTEND_IMAGE}:latest" \
     ./frontend
@@ -92,11 +92,14 @@ echo "✓ Images pushed — ${API_IMAGE}:${GIT_SHA} / ${FRONTEND_IMAGE}:${GIT_SH
 # ─── Deploy ─────────────────────────────────────────────────────────────────
 if [[ "${DEPLOY}" == true && "${PUSH}" == true ]]; then
   echo "→ Copying config files to ${DEPLOY_HOST}:${DEPLOY_DIR}"
-  ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" mkdir -p "${DEPLOY_DIR}"
+  ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" mkdir -p "${DEPLOY_DIR}/backend"
   scp -i "${DEPLOY_KEY}" -o StrictHostKeyChecking=no \
     .env.production \
     docker-compose.prod.yml \
     "${DEPLOY_HOST}:${DEPLOY_DIR}/"
+  scp -i "${DEPLOY_KEY}" -o StrictHostKeyChecking=no \
+    -r backend/migrations \
+    "${DEPLOY_HOST}:${DEPLOY_DIR}/backend/"
 
   echo "→ Connecting to ${DEPLOY_HOST} and deploying"
   ssh "${SSH_OPTS[@]}" "${DEPLOY_HOST}" bash -s -- \

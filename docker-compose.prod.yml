@@ -48,7 +48,7 @@ services:
     depends_on:
       - api
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://stocky.faest.xyz}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://api:8080}
 
 volumes:
   postgres_data:
