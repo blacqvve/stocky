@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stocky}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-stocky}
+    volumes:
+      - ${POSTGRES_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stocky} -d ${POSTGRES_DB:-stocky}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command: ["-path=/migrations", "-database", "${DB_URL}", "up"]
+    restart: on-failure
+
+  api:
+    image: registry.faest.xyz/stocky/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8741}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: ${DB_URL}
+      STOCKY_USER: ${STOCKY_USER}
+      STOCKY_PASS: ${STOCKY_PASS}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://stocky.faest.xyz}
+
+  frontend:
+    image: registry.faest.xyz/stocky/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3741}:3000"
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://stocky.faest.xyz}
+
+volumes:
+  postgres_data:
