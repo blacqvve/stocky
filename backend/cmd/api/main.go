@@ -68,6 +68,7 @@ func main() {
 		r.Get("/locations/{id}", lh.Get)
 		r.Put("/locations/{id}", lh.Update)
 		r.Delete("/locations/{id}", lh.Delete)
+		r.Post("/locations/{id}/generate-grid", lh.GenerateGrid)
 
 		// Categories
 		ch := handlers.NewCategoryHandler(queries)

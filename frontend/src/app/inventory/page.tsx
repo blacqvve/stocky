@@ -33,6 +33,7 @@ import {
   Pencil,
   Trash2,
   FolderPlus,
+  Grid3x3,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -180,6 +181,112 @@ function DeleteDialog({ open, locationName, onClose, onConfirm }: DeleteDialogPr
   );
 }
 
+// ─── Grid Generate Dialog ─────────────────────────────────────────────────────
+
+interface GridDialogProps {
+  open: boolean;
+  parentName: string;
+  parentId: string;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+function GridDialog({ open, parentName, parentId, onClose, onSave }: GridDialogProps) {
+  const [rows, setRows] = useState(1);
+  const [cols, setCols] = useState(1);
+  const [layers, setLayers] = useState(1);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setRows(1);
+      setCols(1);
+      setLayers(1);
+      setError(null);
+    }
+  }, [open]);
+
+  const total = rows * cols * layers;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (rows < 1 || cols < 1 || layers < 1) { setError("All values must be at least 1"); return; }
+    if (total > 2000) { setError("Too many cells (max 2000)"); return; }
+    setGenerating(true);
+    setError(null);
+    try {
+      await api.generateLocationGrid(parentId, { rows, cols, layers });
+      onSave();
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate grid");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Generate grid inside "{parentName}"</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="grid-rows">Rows</Label>
+              <Input
+                id="grid-rows"
+                type="number"
+                min={1}
+                max={100}
+                value={rows}
+                onChange={(e) => setRows(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="grid-cols">Columns</Label>
+              <Input
+                id="grid-cols"
+                type="number"
+                min={1}
+                max={100}
+                value={cols}
+                onChange={(e) => setCols(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="grid-layers">Layers</Label>
+              <Input
+                id="grid-layers"
+                type="number"
+                min={1}
+                max={20}
+                value={layers}
+                onChange={(e) => setLayers(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Will create <span className="font-medium text-foreground">{total}</span> grid_bin locations
+            {layers > 1
+              ? ` named A1-1…${String.fromCharCode(64 + Math.min(rows, 26))}${cols}-${layers}`
+              : ` named A1…${String.fromCharCode(64 + Math.min(rows, 26))}${cols}`}
+          </p>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={generating || total > 2000}>
+              {generating ? "Generating…" : `Generate ${total} cells`}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Location Tree Node ───────────────────────────────────────────────────────
 
 interface TreeNodeProps {
@@ -187,12 +294,13 @@ interface TreeNodeProps {
   selectedId: string | null;
   onSelect: (id: string, name: string) => void;
   onAddChild: (parentId: string, parentName: string) => void;
+  onGenerateGrid: (parentId: string, parentName: string) => void;
   onEdit: (node: LocationNode) => void;
   onDelete: (node: LocationNode) => void;
   depth?: number;
 }
 
-function TreeNode({ node, selectedId, onSelect, onAddChild, onEdit, onDelete, depth = 0 }: TreeNodeProps) {
+function TreeNode({ node, selectedId, onSelect, onAddChild, onGenerateGrid, onEdit, onDelete, depth = 0 }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(depth < 2);
   const [menuOpen, setMenuOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
@@ -262,6 +370,18 @@ function TreeNode({ node, selectedId, onSelect, onAddChild, onEdit, onDelete, de
           >
             <FolderPlus className="h-3.5 w-3.5" />
           </button>
+          {node.type !== "grid_bin" && (
+            <button
+              title="Generate grid inside"
+              className={cn(
+                "p-0.5 rounded hover:bg-black/10 transition-colors",
+                isSelected && "hover:bg-white/20"
+              )}
+              onClick={(e) => { e.stopPropagation(); onGenerateGrid(node.id, node.name); }}
+            >
+              <Grid3x3 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             title="Edit"
             className={cn(
@@ -294,6 +414,7 @@ function TreeNode({ node, selectedId, onSelect, onAddChild, onEdit, onDelete, de
               selectedId={selectedId}
               onSelect={onSelect}
               onAddChild={onAddChild}
+              onGenerateGrid={onGenerateGrid}
               onEdit={onEdit}
               onDelete={onDelete}
               depth={depth + 1}
@@ -429,6 +550,11 @@ export default function InventoryPage() {
     locationId: string;
     locationName: string;
   }>({ open: false, locationId: "", locationName: "" });
+  const [gridDialog, setGridDialog] = useState<{
+    open: boolean;
+    parentId: string;
+    parentName: string;
+  }>({ open: false, parentId: "", parentName: "" });
 
   const loadTree = useCallback(async () => {
     try {
@@ -486,6 +612,9 @@ export default function InventoryPage() {
   const openDelete = (node: LocationNode) =>
     setDeleteDialog({ open: true, locationId: node.id, locationName: node.name });
 
+  const openGenerateGrid = (parentId: string, parentName: string) =>
+    setGridDialog({ open: true, parentId, parentName });
+
   const handleDeleteConfirm = async () => {
     await api.deleteLocation(deleteDialog.locationId);
     setDeleteDialog({ open: false, locationId: "", locationName: "" });
@@ -541,6 +670,7 @@ export default function InventoryPage() {
                 selectedId={selectedId}
                 onSelect={handleSelect}
                 onAddChild={openAddChild}
+                onGenerateGrid={openGenerateGrid}
                 onEdit={openEdit}
                 onDelete={openDelete}
               />
@@ -626,6 +756,13 @@ export default function InventoryPage() {
         locationName={deleteDialog.locationName}
         onClose={() => setDeleteDialog((s) => ({ ...s, open: false }))}
         onConfirm={handleDeleteConfirm}
+      />
+      <GridDialog
+        open={gridDialog.open}
+        parentId={gridDialog.parentId}
+        parentName={gridDialog.parentName}
+        onClose={() => setGridDialog((s) => ({ ...s, open: false }))}
+        onSave={loadTree}
       />
     </div>
   );

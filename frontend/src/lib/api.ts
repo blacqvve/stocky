@@ -129,6 +129,8 @@ export const api = {
     apiFetch<Location>(`/locations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLocation: (id: string) =>
     apiFetch<void>(`/locations/${id}`, { method: 'DELETE' }),
+  generateLocationGrid: (id: string, data: { rows: number; cols: number; layers: number }) =>
+    apiFetch<Location[]>(`/locations/${id}/generate-grid`, { method: 'POST', body: JSON.stringify(data) }),
 
   // Categories
   listCategories: () => apiFetch<Category[]>('/categories'),

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -149,4 +150,71 @@ func (h *LocationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *LocationHandler) GenerateGrid(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Rows   int `json:"rows"`
+		Cols   int `json:"cols"`
+		Layers int `json:"layers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Rows < 1 || req.Cols < 1 {
+		http.Error(w, "rows and cols must be at least 1", http.StatusBadRequest)
+		return
+	}
+	if req.Layers < 1 {
+		req.Layers = 1
+	}
+	if req.Rows*req.Cols*req.Layers > 2000 {
+		http.Error(w, "grid too large (max 2000 cells)", http.StatusBadRequest)
+		return
+	}
+
+	var created []db.Location
+	for row := 0; row < req.Rows; row++ {
+		rowLabel := gridRowLabel(row)
+		for col := 1; col <= req.Cols; col++ {
+			for layer := 1; layer <= req.Layers; layer++ {
+				var name string
+				if req.Layers == 1 {
+					name = fmt.Sprintf("%s%d", rowLabel, col)
+				} else {
+					name = fmt.Sprintf("%s%d-%d", rowLabel, col, layer)
+				}
+				loc, err := h.queries.CreateLocation(r.Context(), db.CreateLocationParams{
+					ParentID: &id,
+					Name:     name,
+					Type:     "grid_bin",
+				})
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				created = append(created, loc)
+			}
+		}
+	}
+
+	if created == nil {
+		created = []db.Location{}
+	}
+	respondJSON(w, http.StatusCreated, created)
+}
+
+// gridRowLabel converts a 0-based row index to a spreadsheet-style label: A, B, ..., Z, AA, AB, ...
+func gridRowLabel(i int) string {
+	if i < 26 {
+		return string(rune('A' + i))
+	}
+	return fmt.Sprintf("%c%c", rune('A'+(i/26)-1), rune('A'+(i%26)))
 }
