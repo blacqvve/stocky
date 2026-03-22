@@ -74,6 +74,8 @@ func main() {
 		r.Get("/categories", ch.List)
 		r.Get("/categories/{id}", ch.Get)
 		r.Post("/categories", ch.Create)
+		r.Put("/categories/{id}", ch.Update)
+		r.Delete("/categories/{id}", ch.Delete)
 
 		// Components
 		comph := handlers.NewComponentHandler(queries)

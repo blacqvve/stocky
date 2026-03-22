@@ -8,6 +8,7 @@ import {
   PlusCircle,
   FolderOpen,
   Cpu,
+  Settings2,
 } from "lucide-react";
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/inventory", label: "Inventory", icon: PackageSearch },
   { href: "/ingest", label: "Ingest Parts", icon: PlusCircle },
   { href: "/projects", label: "Projects / BOM", icon: FolderOpen },
+  { href: "/settings/categories", label: "Item Types", icon: Settings2 },
 ];
 
 export function Sidebar() {

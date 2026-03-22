@@ -44,9 +44,22 @@ export interface Location {
 
 export type LocationNode = Location & { children: LocationNode[] };
 
+export interface FieldDef {
+  key: string;
+  label: string;
+  placeholder: string;
+  type: 'text' | 'number';
+  isValue?: boolean;
+}
+
+export interface CategorySchema {
+  fields: FieldDef[];
+}
+
 export interface Category {
   id: string;
   name: string;
+  schema: CategorySchema | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +132,12 @@ export const api = {
 
   // Categories
   listCategories: () => apiFetch<Category[]>('/categories'),
+  createCategory: (data: { name: string; schema: CategorySchema | null }) =>
+    apiFetch<Category>('/categories', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id: string, data: { name: string; schema: CategorySchema | null }) =>
+    apiFetch<Category>(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCategory: (id: string) =>
+    apiFetch<void>(`/categories/${id}`, { method: 'DELETE' }),
 
   // Components
   listComponents: (params?: { search?: string; category_id?: string; location_id?: string }) => {

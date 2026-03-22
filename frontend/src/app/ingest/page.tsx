@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { api, Category, Location } from "@/lib/api";
+import { api, Category, FieldDef, Location } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,71 +15,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CheckCircle2, AlertCircle, PlusCircle } from "lucide-react";
-
-// ─── Category-specific attribute schemas ────────────────────────────────────
-
-interface FieldDef {
-  key: string;
-  label: string;
-  placeholder: string;
-  type: "text" | "number";
-  isValue?: boolean; // the "main value" field that gets cleared on duplicate
-}
-
-const CATEGORY_FIELDS: Record<string, FieldDef[]> = {
-  Resistor: [
-    { key: "resistance_value", label: "Resistance", placeholder: "e.g. 10", type: "number", isValue: true },
-    { key: "resistance_unit", label: "Unit", placeholder: "Ω / kΩ / MΩ", type: "text" },
-    { key: "footprint", label: "Footprint", placeholder: "0805", type: "text" },
-    { key: "tolerance_percent", label: "Tolerance %", placeholder: "1", type: "number" },
-    { key: "power_rating_watts", label: "Power (W)", placeholder: "0.125", type: "number" },
-  ],
-  Capacitor: [
-    { key: "capacitance_value", label: "Capacitance", placeholder: "100", type: "number", isValue: true },
-    { key: "capacitance_unit", label: "Unit", placeholder: "pF / nF / µF", type: "text" },
-    { key: "footprint", label: "Footprint", placeholder: "0603", type: "text" },
-    { key: "voltage_rating_v", label: "Voltage (V)", placeholder: "50", type: "number" },
-    { key: "dielectric", label: "Dielectric", placeholder: "X7R", type: "text" },
-  ],
-  Diode: [
-    { key: "type", label: "Type", placeholder: "Schottky / Zener / Fast", type: "text", isValue: true },
-    { key: "footprint", label: "Package", placeholder: "SOD-123", type: "text" },
-    { key: "forward_voltage_v", label: "Vf (V)", placeholder: "0.3", type: "number" },
-    { key: "max_current_a", label: "Imax (A)", placeholder: "1.0", type: "number" },
-  ],
-  LED: [
-    { key: "color", label: "Color", placeholder: "Red / Green / Blue", type: "text", isValue: true },
-    { key: "footprint", label: "Package", placeholder: "0805", type: "text" },
-    { key: "forward_voltage_v", label: "Vf (V)", placeholder: "2.0", type: "number" },
-    { key: "max_current_a", label: "Imax (A)", placeholder: "0.02", type: "number" },
-  ],
-  IC: [
-    { key: "package", label: "Package", placeholder: "SOIC-8", type: "text", isValue: true },
-    { key: "pin_count", label: "Pins", placeholder: "8", type: "number" },
-    { key: "logic_family", label: "Family", placeholder: "74HC", type: "text" },
-    { key: "protocol", label: "Protocol", placeholder: "I2C / SPI", type: "text" },
-  ],
-  Transistor: [
-    { key: "type", label: "Type", placeholder: "NPN / PNP / N-MOSFET", type: "text", isValue: true },
-    { key: "footprint", label: "Package", placeholder: "SOT-23", type: "text" },
-    { key: "max_voltage_v", label: "Vmax (V)", placeholder: "30", type: "number" },
-    { key: "max_current_a", label: "Imax (A)", placeholder: "0.1", type: "number" },
-  ],
-  Connector: [
-    { key: "type", label: "Type", placeholder: "JST-XH / Dupont / USB-C", type: "text", isValue: true },
-    { key: "pin_count", label: "Pins", placeholder: "4", type: "number" },
-    { key: "pitch_mm", label: "Pitch (mm)", placeholder: "2.54", type: "number" },
-  ],
-  Module: [
-    { key: "function", label: "Function", placeholder: "ESP32 / Motor Driver", type: "text", isValue: true },
-    { key: "protocol", label: "Protocol", placeholder: "UART / I2C", type: "text" },
-    { key: "voltage_v", label: "Voltage (V)", placeholder: "3.3", type: "number" },
-  ],
-};
-
-const DEFAULT_FIELDS: FieldDef[] = [
-  { key: "description", label: "Description", placeholder: "Part description", type: "text", isValue: true },
-];
 
 // ─── Flat location list for selector (with indent for hierarchy) ──────────────
 
@@ -148,18 +83,23 @@ export default function IngestPage() {
     load();
   }, []);
 
-  // Get fields for current category
-  const fields = CATEGORY_FIELDS[categoryName] ?? DEFAULT_FIELDS;
+  // Get fields for current category from schema
+  const DEFAULT_FIELDS: FieldDef[] = [
+    { key: "description", label: "Description", placeholder: "Part description", type: "text", isValue: true },
+  ];
+  const selectedCategory = categories.find(c => c.id === categoryId);
+  const fields: FieldDef[] = selectedCategory?.schema?.fields ?? DEFAULT_FIELDS;
   const valueField = fields.find((f) => f.isValue) ?? fields[0];
 
   // Auto-generate part name from value field
   useEffect(() => {
     if (categoryName && attributes[valueField?.key ?? ""]) {
       const val = attributes[valueField.key];
-      const unit = attributes["resistance_unit"] || attributes["capacitance_unit"] || "";
+      const unitField = fields.find(f => f.key.endsWith('_unit'));
+      const unit = unitField ? (attributes[unitField.key] || "") : "";
       setPartName(`${val}${unit ? " " + unit : ""} ${categoryName}`);
     }
-  }, [attributes, categoryName, valueField]);
+  }, [attributes, categoryName, valueField, fields]);
 
   const addToast = useCallback((type: "success" | "error", message: string) => {
     const id = ++toastCounter.current;

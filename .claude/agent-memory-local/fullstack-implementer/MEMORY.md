@@ -8,3 +8,4 @@
 - [frontend/src/app/ingest/_ingest.memory.md](../../frontend/src/app/ingest/_ingest.memory.md) — Phase 3 Ingest page: rapid data entry, Save & Duplicate workflow, category-specific attribute schemas
 - [frontend/src/app/inventory/_inventory.memory.md](../../frontend/src/app/inventory/_inventory.memory.md) — Phase 4 Inventory Explorer: split-pane location tree + item table, optimistic quantity adjustment
 - [frontend/src/app/projects/_projects.memory.md](../../frontend/src/app/projects/_projects.memory.md) — Phase 5 Projects & BOM: KiCad CSV upload, color-coded BOM results table, printable pick list
+- [frontend/src/app/settings/categories/_categories-settings.memory.md](../../frontend/src/app/settings/categories/_categories-settings.memory.md) — Dynamic Item Types: category schema CRUD, ingest page schema-driven fields, settings page

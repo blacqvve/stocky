@@ -111,8 +111,21 @@ func (q *Queries) DeleteLocation(ctx context.Context, id uuid.UUID) error {
 
 // ==================== CATEGORIES ====================
 
+func scanCategory(row pgxRow) (Category, error) {
+	var i Category
+	var schemaBuf []byte
+	err := row.Scan(&i.ID, &i.Name, &schemaBuf, &i.CreatedAt, &i.UpdatedAt)
+	if err != nil {
+		return i, err
+	}
+	if schemaBuf != nil {
+		i.Schema = json.RawMessage(schemaBuf)
+	}
+	return i, nil
+}
+
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := q.db.Query(ctx, `SELECT id, name, created_at, updated_at FROM categories ORDER BY name`)
+	rows, err := q.db.Query(ctx, `SELECT id, name, schema, created_at, updated_at FROM categories ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +133,8 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 
 	var items []Category
 	for rows.Next() {
-		var i Category
-		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt, &i.UpdatedAt); err != nil {
+		i, err := scanCategory(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -130,17 +143,48 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 func (q *Queries) GetCategory(ctx context.Context, id uuid.UUID) (Category, error) {
-	row := q.db.QueryRow(ctx, `SELECT id, name, created_at, updated_at FROM categories WHERE id = $1`, id)
-	var i Category
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt, &i.UpdatedAt)
-	return i, err
+	row := q.db.QueryRow(ctx, `SELECT id, name, schema, created_at, updated_at FROM categories WHERE id = $1`, id)
+	return scanCategory(row)
 }
 
-func (q *Queries) CreateCategory(ctx context.Context, name string) (Category, error) {
-	row := q.db.QueryRow(ctx, `INSERT INTO categories (name) VALUES ($1) RETURNING id, name, created_at, updated_at`, name)
-	var i Category
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt, &i.UpdatedAt)
-	return i, err
+type CreateCategoryParams struct {
+	Name   string
+	Schema json.RawMessage
+}
+
+func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
+	var schemaArg interface{}
+	if arg.Schema != nil {
+		schemaArg = []byte(arg.Schema)
+	}
+	row := q.db.QueryRow(ctx,
+		`INSERT INTO categories (name, schema) VALUES ($1, $2) RETURNING id, name, schema, created_at, updated_at`,
+		arg.Name, schemaArg,
+	)
+	return scanCategory(row)
+}
+
+type UpdateCategoryParams struct {
+	ID     uuid.UUID
+	Name   string
+	Schema json.RawMessage
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
+	var schemaArg interface{}
+	if arg.Schema != nil {
+		schemaArg = []byte(arg.Schema)
+	}
+	row := q.db.QueryRow(ctx,
+		`UPDATE categories SET name=$2, schema=$3, updated_at=NOW() WHERE id=$1 RETURNING id, name, schema, created_at, updated_at`,
+		arg.ID, arg.Name, schemaArg,
+	)
+	return scanCategory(row)
+}
+
+func (q *Queries) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, `DELETE FROM categories WHERE id = $1`, id)
+	return err
 }
 
 // ==================== COMPONENTS ====================
