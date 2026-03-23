@@ -34,6 +34,7 @@ import {
   Trash2,
   FolderPlus,
   Grid3x3,
+  X,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -431,9 +432,10 @@ function TreeNode({ node, selectedId, onSelect, onAddChild, onGenerateGrid, onEd
 interface ItemRowProps {
   item: InventoryItem;
   onAdjust: (locationId: string, componentId: string, delta: number) => void;
+  onDelete: (locationId: string, componentId: string) => void;
 }
 
-function ItemRow({ item, onAdjust }: ItemRowProps) {
+function ItemRow({ item, onAdjust, onDelete }: ItemRowProps) {
   const [localQty, setLocalQty] = useState(item.quantity);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(item.quantity));
@@ -526,6 +528,15 @@ function ItemRow({ item, onAdjust }: ItemRowProps) {
           </Button>
         </div>
       </td>
+      <td className="px-4 py-3">
+        <button
+          title="Remove from location"
+          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted transition-colors"
+          onClick={() => onDelete(item.location_id, item.component_id)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </td>
     </tr>
   );
 }
@@ -586,9 +597,28 @@ export default function InventoryPage() {
   const handleAdjust = useCallback(
     async (locationId: string, componentId: string, delta: number) => {
       try {
-        await api.adjustInventory({ location_id: locationId, component_id: componentId, delta });
+        const updated = await api.adjustInventory({ location_id: locationId, component_id: componentId, delta });
+        setItems((prev) =>
+          prev.map((i) =>
+            i.location_id === locationId && i.component_id === componentId
+              ? { ...i, quantity: updated.quantity }
+              : i
+          )
+        );
       } catch {
         // Optimistic update already applied in ItemRow
+      }
+    },
+    []
+  );
+
+  const handleDeleteItem = useCallback(
+    async (locationId: string, componentId: string) => {
+      try {
+        await api.deleteInventoryItem(locationId, componentId);
+        setItems((prev) => prev.filter((i) => !(i.location_id === locationId && i.component_id === componentId)));
+      } catch {
+        // silently ignore
       }
     },
     []
@@ -727,6 +757,7 @@ export default function InventoryPage() {
                       <th className="text-left px-4 py-2.5 font-medium">Category</th>
                       <th className="text-left px-4 py-2.5 font-medium">Footprint</th>
                       <th className="text-left px-4 py-2.5 font-medium">Qty</th>
+                      <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
                   <tbody>
@@ -735,6 +766,7 @@ export default function InventoryPage() {
                         key={`${item.location_id}-${item.component_id}`}
                         item={item}
                         onAdjust={handleAdjust}
+                        onDelete={handleDeleteItem}
                       />
                     ))}
                   </tbody>

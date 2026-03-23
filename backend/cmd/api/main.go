@@ -92,6 +92,7 @@ func main() {
 		r.Get("/inventory", ih.GetByLocation)
 		r.Post("/inventory", ih.Upsert)
 		r.Post("/inventory/adjust", ih.Adjust)
+		r.Delete("/inventory", ih.Delete)
 
 		// Projects
 		ph := handlers.NewProjectHandler(queries)

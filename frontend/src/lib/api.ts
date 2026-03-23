@@ -27,6 +27,10 @@ export async function apiFetch<T>(
     throw new Error(error || `HTTP ${res.status}`);
   }
 
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
   return res.json();
 }
 
@@ -170,6 +174,8 @@ export const api = {
     apiFetch<InventoryItem>('/inventory', { method: 'POST', body: JSON.stringify(data) }),
   adjustInventory: (data: { location_id: string; component_id: string; delta: number }) =>
     apiFetch<InventoryItem>('/inventory/adjust', { method: 'POST', body: JSON.stringify(data) }),
+  deleteInventoryItem: (locationId: string, componentId: string) =>
+    apiFetch<void>(`/inventory?location_id=${locationId}&component_id=${componentId}`, { method: 'DELETE' }),
 
   // Projects
   listProjects: () => apiFetch<Project[]>('/projects'),

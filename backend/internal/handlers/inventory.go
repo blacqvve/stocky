@@ -65,6 +65,24 @@ func (h *InventoryHandler) Upsert(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, inv)
 }
 
+func (h *InventoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	locID, err := uuid.Parse(r.URL.Query().Get("location_id"))
+	if err != nil {
+		http.Error(w, "invalid location_id", http.StatusBadRequest)
+		return
+	}
+	compID, err := uuid.Parse(r.URL.Query().Get("component_id"))
+	if err != nil {
+		http.Error(w, "invalid component_id", http.StatusBadRequest)
+		return
+	}
+	if err := h.queries.DeleteInventory(r.Context(), locID, compID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *InventoryHandler) Adjust(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		LocationID  string `json:"location_id"`
